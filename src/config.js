@@ -5,11 +5,7 @@ const globalConfigs = configs;
 
 window.configs = configs;
 
-const latestCommitPromise = fetch(
-    `https://api.github.com/repos/cosmos/chain-registry/commits/master`,
-)
-    .then((r) => r.json())
-    .then((r) => r.sha);
+const latestCommitPromise = fetch(`https://api.github.com/repos/cosmos/chain-registry/commits/master`).then(r => r.json()).then(r => r.sha);
 
 const fetchCached = async (url, options) => {
     const latestCommitHash = await latestCommitPromise;
@@ -17,23 +13,18 @@ const fetchCached = async (url, options) => {
     if (cache) {
         return Promise.resolve(JSON.parse(cache));
     }
-    return fetch(url, options)
-        .then((response) => {
-            if (response.ok) {
-                return response.json();
-            }
-            throw new Error(response.statusText);
-        })
-        .then((json) => {
-            sessionStorage.setItem(
-                latestCommitHash + url,
-                JSON.stringify(json),
-            );
-            return json;
-        });
+    return fetch(url, options).then((response) => {
+        if (response.ok) {
+            return response.json();
+        }
+        throw new Error(response.statusText);
+    }).then((json) => {
+        sessionStorage.setItem(latestCommitHash + url, JSON.stringify(json));
+        return json;
+    });
 };
-fetchCached('https://api.github.com/repos/cosmos/chain-registry/contents').then(
-    async (data) => {
+fetchCached('https://api.github.com/repos/cosmos/chain-registry/contents')
+    .then(async (data) => {
         const configs = [];
         for (const file of data) {
             try {
@@ -41,30 +32,21 @@ fetchCached('https://api.github.com/repos/cosmos/chain-registry/contents').then(
                     continue;
                 }
                 const assetsConfig = await fetchCached(
-                    `https://raw.githubusercontent.com/cosmos/chain-registry/master/${file.name}/assetlist.json`,
+                    `https://raw.githubusercontent.com/cosmos/chain-registry/master/${file.name}/assetlist.json`
                 );
                 const chainConfig = await fetchCached(
-                    `https://raw.githubusercontent.com/cosmos/chain-registry/master/${file.name}/chain.json`,
+                    `https://raw.githubusercontent.com/cosmos/chain-registry/master/${file.name}/chain.json`
                 );
                 const stakingAsset = assetsConfig.assets[0];
-                const sortApis = (apis, type) => {
+                const sortApisByIfTheyContainDotCom = (apis, type) => {
                     const getValue = (api) => {
-                        return (
-                            api.address.includes('zenchainlabs') +
-                            api.address.includes('.com') +
-                            api.address.includes('.io')
-                        );
+                        return api.address.includes('zenchainlabs') + api.address.includes('.com') + api.address.includes('.io');
                     };
                     const result = apis.sort((a, b) => {
                         return getValue(b) - getValue(a);
                     });
 
-                    const isIPAddress = Number.isInteger(
-                        +new URL(result[0].address).hostname.replaceAll(
-                            '.',
-                            '',
-                        ),
-                    );
+                    const isIPAddress = Number.isInteger(+new URL(result[0].address).hostname.replaceAll('.', ''))
                     if (result[0] && isIPAddress) {
                         result.unshift({
                             ...result[0],
@@ -73,16 +55,9 @@ fetchCached('https://api.github.com/repos/cosmos/chain-registry/contents').then(
                     }
                     return result;
                 };
-                const decimals = (
-                    stakingAsset.denom_units.find(
-                        (unit) => unit.denom === stakingAsset.display,
-                    ) || {}
-                ).exponent;
                 const config = {
-                    RPC_URL: sortApis([...chainConfig.apis.rpc], 'rpc')[0]
-                        .address,
-                    REST_URL: sortApis([...chainConfig.apis.rest], 'lcd')[0]
-                        .address,
+                    RPC_URL: sortApisByIfTheyContainDotCom([...chainConfig.apis.rpc], 'rpc')[0].address,
+                    REST_URL: sortApisByIfTheyContainDotCom([...chainConfig.apis.rest], 'lcd')[0].address,
                     EXPLORER_URL: `https://www.mintscan.io/${chainConfig.chain_name}`,
                     NETWORK_NAME: chainConfig.pretty_name,
                     NETWORK_TYPE: 'mainnet',
@@ -90,7 +65,12 @@ fetchCached('https://api.github.com/repos/cosmos/chain-registry/contents').then(
                     CHAIN_NAME: chainConfig.chain_name,
                     COIN_DENOM: stakingAsset.symbol,
                     COIN_MINIMAL_DENOM: stakingAsset.base,
-                    COIN_DECIMALS: decimals === undefined ? 6 : decimals,
+                    COIN_DECIMALS:
+                        (
+                            stakingAsset.denom_units.find(
+                                (unit) => unit.denom === stakingAsset.display,
+                            ) || {}
+                        ).exponent || 6,
                     PREFIX: stakingAsset.display,
                     COIN_TYPE: 118,
                     COINGECKO_ID: 'juno-network',
@@ -111,8 +91,7 @@ fetchCached('https://api.github.com/repos/cosmos/chain-registry/contents').then(
             localStorage.setItem('chain-registry', JSON.stringify(configs));
             window.location.reload();
         }
-    },
-);
+    });
 
 export const config = configs.find(
     (c) => c.NETWORK_NAME === localStorage.getItem('chain'),
